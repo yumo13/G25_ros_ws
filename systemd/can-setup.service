@@ -1,0 +1,19 @@
+[Unit]
+Description=CAN Interface and GPIO Setup Service
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c 'ip link set can0 down || true'
+ExecStart=/bin/bash -c 'ip link set can0 up type can bitrate 1000000'
+ExecStart=/bin/bash -c 'ip link set can0 up'
+ExecStart=/bin/bash -c 'echo 4 > /sys/class/gpio/export || true'
+ExecStart=/bin/bash -c 'echo out > /sys/class/gpio/gpio4/direction'
+ExecStart=/bin/bash -c 'echo 0 > /sys/class/gpio/gpio4/value'
+ExecStop=/bin/bash -c 'ip link set can0 down'
+ExecStop=/bin/bash -c 'echo 4 > /sys/class/gpio/unexport || true'
+User=root
+
+[Install]
+WantedBy=multi-user.target
