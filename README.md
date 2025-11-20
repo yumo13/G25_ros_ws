@@ -81,3 +81,15 @@ sudo journalctl -u can-setup.service -f
 - CAN操作にはroot権限が必要
 - GPIO操作にはroot権限が必要
 - systemdサービスとして実行することを推奨
+
+
+
+
+起動方法(ble)
+ble_serverで
+
+```
+sudo /home/kiks/.nvm/versions/node/v18.20.8/bin/node /home/kiks/workspaces/nav_robot/ble_server/ble_server.js
+```
+
+ros2 run ble_controller ble_controller_node

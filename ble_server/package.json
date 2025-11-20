@@ -1,0 +1,14 @@
+{
+    "name": "ble-server",
+    "version": "1.0.0",
+    "description": "BLE server for nav_robot using @abandonware/bleno",
+    "main": "ble_server.js",
+    "scripts": {
+        "start": "node ble_server.js"
+    },
+    "dependencies": {
+        "@abandonware/bleno": "~0.6.2"
+    },
+    "author": "kiks",
+    "license": "MIT"
+}
