@@ -17,9 +17,13 @@ ament_target_dependencies(can_data_converter_node rclcpp std_msgs can_msgs)
 add_executable(send_float_node src/send_float.cpp)
 ament_target_dependencies(send_float_node rclcpp std_msgs can_msgs)
 
+add_executable(read_float_node src/read_float.cpp)
+ament_target_dependencies(read_float_node rclcpp std_msgs can_msgs)
+
 install(TARGETS
   can_data_converter_node
   send_float_node
+  read_float_node
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
