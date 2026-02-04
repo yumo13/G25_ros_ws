@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <can_msgs/msg/frame.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
 
 #include <cstring>
 #include <cstdint>
@@ -28,6 +29,9 @@ public:
     sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
         "cmd_vel", 10, [this](const geometry_msgs::msg::Twist &msg) { cmd_vel_cb(msg); });
 
+    // Debug: publish motor commands
+    motor_cmd_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>("motor_commands", 10);
+
     // Create timeout timer - check every 100ms
     timeout_timer_ = this->create_wall_timer(
         std::chrono::milliseconds(100), [this]() { timeout_check(); });
@@ -54,11 +58,17 @@ private:
     // Convert to normalized motor commands in range [-1, 1] using max_motor_ as scaling factor
     // We assume user provides velocities in range that map correctly; for safety, clamp by max_motor_
     double left_cmd = clamp(v_left, -max_motor_, max_motor_);
-    double right_cmd = clamp(v_right, -max_motor_, max_motor_);
+    double right_cmd = clamp(-v_right, -max_motor_, max_motor_);
 
     // Pack each as 4-byte float into CAN frame payload
     publish_motor(left_can_id_, static_cast<float>(left_cmd));
     publish_motor(right_can_id_, static_cast<float>(right_cmd));
+
+    RCLCPP_INFO(this->get_logger(), "cmd_vel received: linear=%.4f angular=%.4f => left_cmd=%.4f right_cmd=%.4f",
+                 linear, angular, left_cmd, right_cmd);
+
+    // Publish motor commands for debugging (rqt_plot)
+    publish_motor_commands(static_cast<float>(left_cmd), static_cast<float>(right_cmd));
   }
 
   void publish_motor(uint32_t can_id, float value) {
@@ -84,6 +94,15 @@ private:
     return v;
   }
 
+  void publish_motor_commands(float left_cmd, float right_cmd) {
+    auto msg = std_msgs::msg::Float32MultiArray();
+    msg.data.resize(2);
+    msg.data[0] = left_cmd;
+    msg.data[1] = right_cmd;
+    motor_cmd_pub_->publish(msg);
+    RCLCPP_DEBUG(this->get_logger(), "Motor commands: left=%.4f, right=%.4f", left_cmd, right_cmd);
+  }
+
   void timeout_check() {
     auto now = this->get_clock()->now();
     auto time_since_last_cmd = (now - last_cmd_time_).seconds();
@@ -92,6 +111,7 @@ private:
       // Send zero commands for safety
       publish_motor(left_can_id_, 0.0f);
       publish_motor(right_can_id_, 0.0f);
+      publish_motor_commands(0.0f, 0.0f);
       RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
                            "cmd_vel timeout (%.2fs) - sending zero commands", time_since_last_cmd);
     }
@@ -104,6 +124,7 @@ private:
   double cmd_timeout_{1.0};
 
   rclcpp::Publisher<can_msgs::msg::Frame>::SharedPtr pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr motor_cmd_pub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_;
   rclcpp::TimerBase::SharedPtr timeout_timer_;
   rclcpp::Time last_cmd_time_;
