@@ -45,6 +45,11 @@ npm install
 cd ..
 ```
 
+また、ble_server実行のため、以下のコマンドを実行してください
+```bash
+sudo setcap cap_net_raw+eip $(eval readlink -f `which node`)
+```
+
 ## CAN/GPIO設定
 ### Raspberry Piの場合
 
