@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 try:
     import japanize_matplotlib
 except ImportError:
-    pass  # 日本語フォントがなくても動作
+    pass
 
 class TrajectoryVisualizer(Node):
     def __init__(self):
@@ -30,7 +30,6 @@ class TrajectoryVisualizer(Node):
         self.trajectory_completed = False
         self.data_count = 0
         
-        # Subscribers
         self.pos_sub = self.create_subscription(
             Float64,
             'current_position',
