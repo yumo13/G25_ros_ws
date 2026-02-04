@@ -23,7 +23,7 @@
 ## 必要要件
 
 - ROS 2 Humble
-- Node.js(BLEサーバー用)
+- Node 24.11.1 (BLEサーバー用)
 - CAN対応デバイス(Raspberry Pi内蔵CAN、CANable2など)
 
 ## ビルド
