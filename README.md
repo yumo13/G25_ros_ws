@@ -1,95 +1,147 @@
-# ROS 2 CAN Interface
+# G25 ROS2 Workspace
 
-ROS 2を使用してSocketCANとの間でCANフレームを送受信するパッケージです。
+校内案内ロボットG25用のROS 2ワークスペースです。CAN通信、BLE入力、ジョイスティック変換などを含みます。
 
 ## 機能
 
-- CANフレームをROS 2メッセージ（`can_msgs::msg::Frame`）として受信・配信
-- ROS 2メッセージをCANフレームとして送信
-- systemdサービスによる自動CAN設定とGPIO制御
+- CANフレームの送受信（SocketCAN ↔ ROS 2）
+- BLE入力をTwistに変換して`/cmd_vel`へ配信
+- ジョイスティック入力をTwistに変換
+- 速度・位置・加速度の軌道可視化
+- systemdサービスによるCAN/GPIO初期化
 
-## 構成
+## ディレクトリ構成
 
-- `src/can_interface/` - メインパッケージ
-- `src/can_msgs/` - CANメッセージ定義
-- `systemd/` - systemdサービスファイル
+- [ble_server](ble_server) - BLEサーバー（Node.js）
+- [src/can_interface](src/can_interface) - CANインターフェースノード
+- [src/can_msgs](src/can_msgs) - CANメッセージ定義
+- [src/ble_controller](src/ble_controller) - BLE → Twist 変換ノード
+- [src/debug_tools/joy_controller](src/debug_tools/joy_controller) - Joy → Twist
+- [src/debug_tools/jerk_trajectory_controller](src/debug_tools/jerk_trajectory_controller) - 軌道可視化
+- [systemd](systemd) - systemdサービス
 
-## インストール
+## 必要要件
 
-1. パッケージをビルド:
+- ROS 2 Humble
+- Node.js(BLEサーバー用)
+- CAN対応デバイス(Raspberry Pi内蔵CAN、CANable2など)
+
+## ビルド
+
 ```bash
-colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+colcon build --symlink-install
 ```
 
-2. CAN/GPIO設定サービスをインストール:
+## 依存関係インストール
+
+```bash
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y 
+```
+
+```bash
+cd ble_server
+npm install
+cd ..
+```
+
+## CAN/GPIO設定
+### Raspberry Piの場合
+
+1. サービスをインストール:
+
 ```bash
 ./install_services.sh
 ```
 
-## 使用方法
+2. サービス起動（自動起動設定済み）:
 
-### CAN/GPIO設定サービスの開始（自動起動設定済み）
 ```bash
 sudo systemctl start can-setup.service
 ```
 
-### ROS 2ノードの実行
+3. ログ確認
+
+```bash
+sudo systemctl status can-setup.service
+sudo journalctl -u can-setup.service -f
+```
+
+### 他の環境の場合
+CANable2などのデバイスを使用する場合、適宜CANインターフェースを設定してください。
+``` bash
+sudo ip link set can0 type can bitrate 1000000
+sudo ip link set can0 up
+```
+
+参考: [CANable 2.0で高速can通信 with ROS 2](https://qiita.com/kzs321kzs/items/463f1b1ce21877e8b4b6)
+
+## 実行方法
+
+### 環境セットアップ
+
 ```bash
 source install/setup.bash
+```
+
+### CANインターフェース
+
+```bash
 ros2 run can_interface can_interface_node
 ```
 
-### CANフレーム送信
+CANフレーム送信:
+
 ```bash
 ros2 topic pub /can_tx can_msgs/msg/Frame "{id: 100, is_extended: false, is_remote: false, length: 2, data: [255, 255, 0, 0, 0, 0, 0, 0]}" -1
 ```
 
-### CANフレーム受信確認
+CANフレーム受信確認:
+
 ```bash
 ros2 topic echo /can_rx
 ```
 
-## systemdサービス
+### BLEコントローラ
 
-### can-setup.service
-- システム起動時に自動実行
-- CANインターフェース（can0）の設定（bitrate 1000000）
-- GPIO4をOUTPUT, LOWに設定 (STBYモードの解除)
-- 終了時にCANインターフェースをdown
-
-## ログ確認
+1. BLEサーバー起動:
 
 ```bash
-# サービスのステータス
-sudo systemctl status can-setup.service
-
-# リアルタイムログ
-sudo journalctl -u can-setup.service -f
+node ble_server/ble_server.js
 ```
 
-## パラメータ
+2. ROS 2ノード起動:
 
-- `interface`: CANインターフェース名（デフォルト: "can0"）
+```bash
+ros2 run ble_controller ble_controller_node
+```
+
+### ジョイスティック → Twist
+
+```bash
+ros2 run joy_controller joy_to_twist
+```
+
+### 軌道可視化
+
+```bash
+ros2 run jerk_trajectory_controller visualize_trajectory.py
+```
 
 ## トピック
 
 - `/can_rx` - 受信CANフレーム（Publisher）
 - `/can_tx` - 送信CANフレーム（Subscriber）
+- `/cmd_vel` - 速度指令（Publisher）
+- `joy` - ジョイスティック入力（Subscriber）
 
-## 必要な権限
+## パラメータ
 
-- CAN操作にはroot権限が必要
-- GPIO操作にはroot権限が必要
-- systemdサービスとして実行することを推奨
+- `interface`（can_interface）: CANインターフェース名（デフォルト: "can0"）
+- `max_linear_speed`（joy_controller）: 直進最大速度
+- `max_angular_speed`（joy_controller）: 旋回最大速度
 
+## 注意
 
-
-
-起動方法(ble)
-ble_serverで
-
-```
-sudo /home/kiks/.nvm/versions/node/v18.20.8/bin/node /home/kiks/workspaces/nav_robot/ble_server/ble_server.js
-```
-
-ros2 run ble_controller ble_controller_node
+- CAN/GPIO操作にはroot権限が必要です。
+- BLEサーバー実行にはNode.jsが必要です。
