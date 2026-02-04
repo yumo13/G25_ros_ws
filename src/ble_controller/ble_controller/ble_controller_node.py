@@ -45,6 +45,76 @@ class BleControllerNode(Node):
         except Exception as e:
             self.get_logger().error(f'Error processing BLE data: {e}')
 
+    def _read_line_from_pipe(self, pipe_file):
+        """
+        パイプから1行読み取ってJSON処理を行う
+        Returns: True=継続, False=ループ終了
+        """
+        try:
+            line = pipe_file.readline()
+            if line:
+                line = line.strip()
+                if line:
+                    # JSONデータをパース
+                    data = json.loads(line)
+                    linear_y = data.get('linear_y', 0.0)
+                    angular_z = data.get('angular_z', 0.0)
+                    timestamp = data.get('timestamp', 0)
+                    
+                    self.get_logger().info(f'Received from BLE: linear.y={linear_y}, angular.z={angular_z}, ts={timestamp}')
+                    
+                    # データを処理
+                    self.process_ble_data(linear_y, angular_z)
+            else:
+                # データがない場合、短時間待機
+                time.sleep(0.01)
+            return True
+                
+        except json.JSONDecodeError as e:
+            self.get_logger().error(f'JSON decode error: {e}, line: {line}')
+            return True
+        except OSError as e:
+            if e.errno == 11:  # EAGAIN - no data available
+                time.sleep(0.01)
+                return True
+            else:
+                self.get_logger().error(f'OS error reading pipe: {e}')
+                return False
+        except Exception as e:
+            self.get_logger().error(f'Error reading from pipe: {e}')
+            time.sleep(0.1)
+            return True
+
+    def _read_from_pipe(self):
+        """
+        パイプを開いてデータ読み取りループを実行
+        """
+        try:
+            pipe_fd = os.open(PIPE_PATH, os.O_RDONLY | os.O_NONBLOCK)
+            pipe_file = os.fdopen(pipe_fd, 'r')
+            
+            self.get_logger().info('Pipe opened successfully, waiting for data...')
+            
+            while self.running:
+                if not self._read_line_from_pipe(pipe_file):
+                    break
+            
+            pipe_file.close()
+            
+        except Exception as e:
+            self.get_logger().error(f'Error opening pipe: {e}')
+            time.sleep(1.0)
+
+    def _wait_for_pipe(self):
+        """
+        パイプが存在するまで待機
+        Returns: True=パイプ発見, False=停止要求
+        """
+        while self.running and not os.path.exists(PIPE_PATH):
+            self.get_logger().info(f'Waiting for pipe: {PIPE_PATH}')
+            time.sleep(0.5)
+        return self.running
+
     def pipe_reader_thread(self):
         """
         パイプからデータを読み取るスレッド
@@ -52,60 +122,15 @@ class BleControllerNode(Node):
         self.get_logger().info('Starting pipe reader thread')
         
         while self.running:
+            # パイプが存在するまで待機
+            if not self._wait_for_pipe():
+                break
+            
+            self.get_logger().info('Pipe found, opening for reading...')
+            
             try:
-                # パイプが存在するまで待機
-                if not os.path.exists(PIPE_PATH):
-                    self.get_logger().info(f'Waiting for pipe: {PIPE_PATH}')
-                    time.sleep(0.5)
-                    continue
-                
-                self.get_logger().info('Pipe found, opening for reading...')
-                
                 # パイプを開いてデータを読み取り（ノンブロッキングモード）
-                try:
-                    pipe_fd = os.open(PIPE_PATH, os.O_RDONLY | os.O_NONBLOCK)
-                    pipe_file = os.fdopen(pipe_fd, 'r')
-                    
-                    self.get_logger().info('Pipe opened successfully, waiting for data...')
-                    
-                    while self.running:
-                        try:
-                            line = pipe_file.readline()
-                            if line:
-                                line = line.strip()
-                                if line:
-                                    # JSONデータをパース
-                                    data = json.loads(line)
-                                    linear_y = data.get('linear_y', 0.0)
-                                    angular_z = data.get('angular_z', 0.0)
-                                    timestamp = data.get('timestamp', 0)
-                                    
-                                    self.get_logger().info(f'Received from BLE: linear.y={linear_y}, angular.z={angular_z}, ts={timestamp}')
-                                    
-                                    # データを処理
-                                    self.process_ble_data(linear_y, angular_z)
-                            else:
-                                # データがない場合、短時間待機
-                                time.sleep(0.01)
-                                
-                        except json.JSONDecodeError as e:
-                            self.get_logger().error(f'JSON decode error: {e}, line: {line}')
-                        except OSError as e:
-                            if e.errno == 11:  # EAGAIN - no data available
-                                time.sleep(0.01)
-                                continue
-                            else:
-                                self.get_logger().error(f'OS error reading pipe: {e}')
-                                break
-                        except Exception as e:
-                            self.get_logger().error(f'Error reading from pipe: {e}')
-                            time.sleep(0.1)
-                    
-                    pipe_file.close()
-                    
-                except Exception as e:
-                    self.get_logger().error(f'Error opening pipe: {e}')
-                    time.sleep(1.0)
+                self._read_from_pipe()
                     
             except Exception as e:
                 self.get_logger().error(f'Pipe reader thread error: {e}')
